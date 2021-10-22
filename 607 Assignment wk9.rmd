@@ -1,0 +1,51 @@
+# Data 607 Assignment Week 9
+
+## by Catherine Cho
+
+### The packages jsonlite and httr are loaded.
+
+```{r}
+library(jsonlite)
+library(httr)
+```
+
+### An interface/function is created to read JSON data from New York Times "Top Stories" API.
+
+#### The function will take an input of the api_key, which was requested on https://developer.nytimes.com/, and a topic of interest under "Top Stories". The function will return the raw dataframe read from JSON as well as a subset dataframe. The subset dataframe contains three columns of interest; title of the article, subsection, and a brief abstract. However, this can be easily modified to subset whatever variable  of interest. 
+
+##### For ease of review, the function was modified to show the first 5 rows only. 
+
+```{r}
+api_key<-"ZG5iX7DyAy42pXiOem9VhpqgscAbq4Dd"
+topic<-"arts"
+
+#function Get_JSON is written
+Get_JSON<-function(api_key,topic){
+  template_URL<-paste("https://api.nytimes.com/svc/topstories/v2/",topic,".json?api-key=",api_key,sep="")
+  df<-jsonlite::fromJSON(template_URL,flatten=TRUE)
+  df_raw<-as.data.frame(df)
+  df<-data.frame(df_raw$results.title,df_raw$results.subsection,df_raw$results.abstract)
+  colnames(df)<-c("title","subsection","abstract")
+  head(df_raw,5)
+  head(df,5)
+}
+
+Get_JSON(api_key,topic)
+```
+### The JSON data is tested for other topics under "Top Stories". 
+
+```{r}
+#Test 1: Topic "automobiles"
+topic<-"automobiles"
+Get_JSON(api_key,topic)
+
+```
+
+```{r}
+#Test 2: Topic "books"
+topic<-"books"
+Get_JSON(api_key,topic)
+
+```
+#### Conclusion: I have researched the multiple ways content from JSON data can be parsed in R and I have found using the jsonlite package in conjunction  with the basic R package is the most straightforward. At least in the context of reading in the data as a dataframe. 
+
