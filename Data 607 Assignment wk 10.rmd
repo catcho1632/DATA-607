@@ -1,0 +1,275 @@
+---
+title: "Data 607 Week 10 Assignment"
+author: "Catherine Cho"
+date: "10/28/2021"
+output: 
+  html_document:
+    code_folding: show
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    smooth_scroll: false
+    toc_depth: 3
+number_sections: true
+theme: paper
+---
+
+## The Libraries Used
+```{r}
+library(tidytext)
+library(textdata)
+library(dplyr)
+library(stringr)
+library(janeaustenr)
+library(tidyr)
+library(rvest)
+```
+
+## Primary Code from Textbook
+
+The following sections re-creates excerpt code from "Text Mining with R", which performs sentiment analysis on tidy data. The example utilizes Jane Austen novels to demonstrate how the novels can be itemized using tidyr, then compares three different lexicon libraries to assess sentiment.
+
+Austen_books() is a tibble that consists of two columns; "text" and "book". Under a new variable, "tidy_books", the text values from austen_books() is grouped by "book" then mutated to assign the row number and chapter of which those values belong to. Once this is done, the text is flattened by using the unnest_tokens function from the R package tidytext.
+```{r}
+tidy_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text, 
+                                regex("^chapter [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+```
+
+The following section utlizes the "nrc" lexicon library to assess the "joy" sentiment in the book, "Emma". Once the joy words are filtered from the "nrc" library then assigned to variable, "nrc_joy", inner_join() is utilized to match the words in the itemized dataframe, tidy_books. Then the joy associated text from the book is counted to see which words occur most frequently. 
+```{r}
+nrc_joy <- get_sentiments("nrc") %>% 
+  filter(sentiment == "joy")
+
+tidy_books %>%
+  filter(book == "Emma") %>%
+  inner_join(nrc_joy) %>%
+  count(word, sort = TRUE)
+```
+The following code introduces the "bing" lexicon library which yields "positive" or "negative" to measure sentiment. So the overall net sentiment is evaluated per book by performing the same inner_join operation as previously then assigns 80 lines per row in the "jane_austen_sentiment" variable. And per these 80 lines, the net sentiment is calculated. 
+```{r}
+jane_austen_sentiment <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(book, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+```
+Overall, by visual inspection it is clear that the overall net sentiment is positive through the sequential progresion of each book. This shows that based on these lexicon libraries, the general usage of words are positive. 
+```{r}
+library(ggplot2)
+
+ggplot(jane_austen_sentiment, aes(index, sentiment, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+Instead of assessing sentiment in a binary fashion, we now can utilize the "afinn" lexicon in order to see how the sentiment changes through the novel, "Pride & Prejudice". This lexicon measures sentiment between the integers -5 to +5. Once the afinn assessment is obtained, then the dataframes are combined in order to use ggplot to plot per method (NRC, AFINN, and bing). 
+```{r}
+pride_prejudice <- tidy_books %>% 
+  filter(book == "Pride & Prejudice")
+
+afinn <- pride_prejudice %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  group_by(index = linenumber %/% 80) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "AFINN")
+
+bing_and_nrc <- bind_rows(
+  pride_prejudice %>% 
+    inner_join(get_sentiments("bing")) %>%
+    mutate(method = "Bing et al."),
+  pride_prejudice %>% 
+    inner_join(get_sentiments("nrc") %>% 
+                 filter(sentiment %in% c("positive", 
+                                         "negative"))
+    ) %>%
+    mutate(method = "NRC")) %>%
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+```
+
+In the plots below the three assessments are compared via barplot of the sentiments. Afinn and Bing seems to show more fluctuation of positive to negative sentiment while NRC largely remains positive. The textbook highlights this assessment as well but AFINN overall has the greatest positive absolute values as well. But overall all three plots show a consistent agreement of the positive trend through "Pride & Prejudice". 
+```{r}
+bind_rows(afinn, 
+          bing_and_nrc) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+
+## Extending Analysis
+
+### Law Articles and Loughran Lexicon
+
+The following sections use text tidying and sentiment analysis methods highlighted in _2 Sentiment Analysis with Tidy Data | Text Mining with R_ and https://juliasilge.com/blog/tidytext-0-1-3/ to analyze the text scraped from two  _"https://harvardlawreview.org"_ articles. The Loughran lexicon library is utilized since it provides sentiments metrics pertaining to financial and legal topics.  
+
+The Articles from Harvard Law Review:
+1) "Policing the Emergency Room", https://harvardlawreview.org/2021/06/policing-the-emergency-room/
+2) "Monopolizing Whiteness", https://harvardlawreview.org/2021/05/monopolizing-whiteness/
+
+Throughout this analysis, the first article listed above will be referred to as "ER" and the second, "Whiteness". 
+
+#### Scraping of Articles from URL
+The two articles are scraped via html_nodes then the string is converted into text. Once the raw text is cleaned of unnecessary notations carried over from scraping the data, the content is stored in variables article1_text and article2_text for "ER" and "Whiteness", respectively. 
+
+Keeping in mind the limitations of Loughran, certain words are removed as well in order to best capture the original context of the articles. For example, the words "white" and "black" are frequently used in "Whiteness" but Loughran will read it as a color (adjective) rather than the racial category (noun), which may significantly changed the results. 
+```{r}
+#article 1: "Policing the Emergency Room"
+scraping_article1<-read_html("https://harvardlawreview.org/2021/06/policing-the-emergency-room/")
+article1_text<-scraping_article1%>%
+  html_nodes("p")%>%
+  html_text()
+
+article1_text<-article1_text%>%
+  str_replace_all(pattern="\n",replacement="")%>%
+  str_replace_all(pattern="\\d|\\d+",replacement="")%>%
+  str_replace_all(pattern="\\(|\\)|\\-|\\;",replacement="")
+
+#article 2: "Monopolizing Whiteness"
+scraping_article2<-read_html("https://harvardlawreview.org/2021/05/monopolizing-whiteness/")
+article2_text<-scraping_article2%>%
+  html_nodes("p")%>%
+  html_text()
+
+#Obvious syntax carried over from scraping is removed using regex, as well as the words "white(s) and black(s)" since the lexicon will regard these terms as adjectives rather than as nouns. 
+article2_text<-article2_text%>%
+  str_replace_all(pattern="\n",replacement="")%>%
+  str_replace_all(pattern="\\d|\\d+",replacement="")%>%
+  str_replace_all(pattern="\\(|\\)|\\-|\\;",replacement="")%>%
+  str_replace_all(pattern="white|whites|White|Whites",replacement="")%>%
+  str_replace_all(pattern="black|blacks|Black|Blacks",replacement="")
+
+
+```
+
+### Creating Dataframes and Unnesting Words
+The string values from article1_text and article2_text are stored in dataframes per article. Each dataframe then unnests (tidytext) the words such that each row stores one row. Column names are renamed so there's an agreement between the two dataframes for ease of binding the tables later. 
+```{r}
+#creating dataframe for ER (article 1) article
+ER<-rep(c("ER"),times=length(article1_text))
+article1_df<-data.frame(article1_text,ER)
+colnames(article1_df)<-c("text","title")
+tidy_article1<-article1_df%>%
+  unnest_tokens(word,text)
+
+#creating dataframe for "Monopolizing Whiteness" (article 2). 
+Monopolizing<-rep(c("Monopolizing"),times=length(article2_text))
+article2_df<-data.frame(article2_text,Monopolizing)
+colnames(article2_df)<-c("text","title")
+tidy_article2<-article2_df%>%
+  unnest_tokens(word,text)
+
+combined_articles<-rbind(article1_df,article2_df)
+```
+
+### Raw Count of Each Word per Article
+Each dataframe in its tidy form counts up the frequency of each word. It is evident that summing the raw count as such would require sifting through quite a bit of indefinite articles (i.e. a, the, an, and, etc). However, the two significant words found in ER is "police" and "policing" and for Whiteness it is "school" and "district". 
+```{r}
+article1_count<-count(tidy_article1,word,sort=TRUE)
+head(article1_count,15)
+
+article2_count<-count(tidy_article2,word,sort=TRUE)
+head(article2_count,15)
+```
+
+### Loughran Lexicon Sentiments
+The following shows the unique sentiment categories in Lougran is "positive", "negative", "uncertainty", and "litigious". 
+```{r}
+loughran <- get_sentiments("loughran") 
+unique(loughran$sentiment)
+```
+
+### Sentiments Assigned 
+Inner_join is used on the unnessted and tidy'd dataframe of "ER" to match each word with its respective sentiment from Loughran. Then the results are categorized per sentiment to be plotted using ggplot. For this article there appears to be a high absolute value of litious and negative words and relates to criminal justice. The positive words portray optimism such as "better" and "progress" but the absolute value of this sentiment is significantly lower than the others. 
+```{r}
+article1_sentiment <- tidy_article1 %>%
+  inner_join(get_sentiments("loughran"))
+article1_sentiment_count<-count(article1_sentiment,sentiment,sort=TRUE)
+head(article1_sentiment_count)
+
+article1_sentiment%>%
+  count(sentiment,word)%>%
+  filter(sentiment %in% c("positive","negative","uncertainty","litigious"))%>%
+  group_by(sentiment)%>%
+  top_n(10)%>%
+  ungroup%>%
+  mutate(word=reorder(word,n))%>%
+  mutate(sentiment=factor(sentiment,levels=c("positive","negative","uncertainty","litigious")))%>%
+  ggplot(aes(word,n,fill=sentiment))+
+  geom_col(alpha=1,show.legened=FALSE)+
+  coord_flip()+
+  scale_y_continuous(expand=c(0,0))+
+  facet_wrap(~sentiment,scales="free")+
+  labs(x=NULL,y="Total number of occurrences",
+       title="Loughran Sentiment Score",
+       subtitle="From 'Policing the Emergency Room'")
+```
+
+The same is done for "Whiteness" as shown. 
+The sentiment analysis shows that for the "Whiteness" article, the positive sentiment increases from "ER" and is closer to the  negative count. Overall, the litigious and negative words show greater frequency but does not overshadow the positive. There seems to be less focus of criminal justice here but rather constitutional laws. 
+```{r}
+article2_sentiment <- tidy_article2 %>%
+  inner_join(get_sentiments("loughran"))
+article2_sentiment_count<-count(article2_sentiment,sentiment,sort=TRUE)
+head(article2_sentiment_count)
+
+article2_sentiment%>%
+  count(sentiment,word)%>%
+  filter(sentiment %in% c("positive","negative","uncertainty","litigious"))%>%
+  group_by(sentiment)%>%
+  top_n(10)%>%
+  ungroup%>%
+  mutate(word=reorder(word,n))%>%
+  mutate(sentiment=factor(sentiment,levels=c("positive","negative","uncertainty","litigious")))%>%
+  ggplot(aes(word,n,fill=sentiment))+
+  geom_col(alpha=1,show.legened=FALSE)+
+  coord_flip()+
+  scale_y_continuous(expand=c(0,0))+
+  facet_wrap(~sentiment,scales="free")+
+  labs(x=NULL,y="Total number of occurrences",
+       title="Loughran Sentiment Score",
+       subtitle="From 'Monopolizing Whiteness'")
+```
+
+### Combined Articles
+The following plot shows the combined results and the uncertainty words increase significantly as well as litigious. 
+```{r}
+sentiment_combined<-rbind(article1_sentiment,article2_sentiment)
+sentiment_combined%>%
+  count(sentiment,word)%>%
+  filter(sentiment %in% c("positive","negative","uncertainty","litigious"))%>%
+  group_by(sentiment)%>%
+  top_n(10)%>%
+  ungroup%>%
+  mutate(word=reorder(word,n))%>%
+  mutate(sentiment=factor(sentiment,levels=c("positive","negative","uncertainty","litigious")))%>%
+  ggplot(aes(word,n,fill=sentiment))+
+  geom_col(alpha=1,show.legened=FALSE)+
+  coord_flip()+
+  scale_y_continuous(expand=c(0,0))+
+  facet_wrap(~sentiment,scales="free")+
+  labs(x=NULL,y="Total number of occurrences",
+       title="Sentiment Scores of Law Articles",
+       subtitle="From 'Harvard Law Review'")
+
+```
+
+## Conclusion
+
+The examples shown in _2 Sentiment Analysis with Tidy Data | Text Mining with R_ demonstrates the use of three lexicons, "bing", "NRC", "Afinn" which portrayes sentiment either in a binary way or by a scale towards positive or negative. For the extended analysis the Loughran Lexicon was selected since it uses sentiment values that would best capture law related articles. It would be interesting to see what the general sentiment is per publication site to capture the attitudes towards some of these more complex topics of conversation. 
+
+## Citations: 
+
+1. Robinson, David, and Julia Silge. “2 Sentiment Analysis with Tidy Data: Text Mining with R.” _2 Sentiment Analysis with Tidy Data | Text Mining with R_, 2 Sept. 2021, https://www.tidytextmining.com/sentiment.html. 
+
+2. Silge, Julia. "Tidytext 0.1.3." _Julia Silge_, 18 June 2017, https://juliasilge.com/blog/tidytext-0-1-3/.
