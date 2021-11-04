@@ -1,0 +1,75 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r}
+library(readr)
+library(tuneR)
+```
+
+#path of file
+```{r}
+data_male = readWave("/Users/catherinecho/Documents/Sound Presentation/Audio_Speech_Actors_01-24/Actor_01/03-01-07-01-02-02-01.wav")
+summary(data_male)
+
+data_female = readWave("/Users/catherinecho/Documents/Sound Presentation/Audio_Speech_Actors_01-24/Actor_02/03-01-02-02-02-01-02.wav")
+summary(data_female)
+
+```
+
+```{r}
+y_male=data_male@left
+Fs_male=data_male@samp.rate
+
+y_female=data_female@left
+Fs_female=data_female@samp.rate
+```
+
+```{r}
+library(audio)
+audio::play.audioSample(y_male,Fs_male)
+
+```
+```{r}
+library(audio)
+audio::play.audioSample(y_female,Fs_female)
+```
+
+```{r}
+library(ggplot2)
+#theme_set(theme_light())
+wave_form_male<-ggplot(mapping=aes(x=seq_len(length(y_male)),y=y_male))+
+  geom_line(color='blue')+
+  labs(x="Sample Number",y="Amplitude",title="Speech waveform_Male")+
+  theme(plot.title=element_text(hjust=0.5))
+
+library(plotly)
+ggplotly(wave_form_male)
+
+theme_set(theme_light())
+wave_form_female<-ggplot(mapping=aes(x=seq_len(length(y_female)),y=y_female))+
+  geom_line(color='blue')+
+  labs(x="Sample Number",y="Amplitude",title="Speech waveform_Female")+
+  theme(plot.title=element_text(hjust=0.5))
+
+ggplotly(wave_form_female)
+
+```
+
+
+```{r}
+library(seewave)
+library(fftw)
+library(ggplot2)
+library(plotly)
+#number of samples per 16 ms
+N<-16e-3*Fs_male
+spect_male<-ggspectro(y_male,Fs_male,wl=N,wn="hamming",ovlp=50,fftw=TRUE)+
+  geom_tile(aes(fill=amplitude))+
+  scale_fill_viridis_c()
+ggplotly(spect_male)
+
+
+```
+
