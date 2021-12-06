@@ -27,7 +27,7 @@ output: rmdformats::readthedown
 # Instructions
 This project is a proof-of-concept(POC) with certain assumptions on the data. For this implementation, Purpose 1 will be demonstrated via a markdown file below to show step by step how the text data is processed. Purpose 2 will be displayed in the Shiny App to allow the user to easily manipulate and filter settings to gain more insight of the job market today. 
 
-#Load the libraries
+## Load the libraries
 ```{r}
 library(tidyverse)
 library(tidytext)
@@ -50,10 +50,13 @@ library(RColorBrewer)
 library(ggplot2)
 library(wordcloud)
 library(httr)
+
 ```
 # Recommender System: Cosine Similarity
 
-## Load the data: The scraped job postings are stored in a dataframe and read in below. A sample resume is scraped and the raw text is stored in variable, "resume". 
+## Load the data 
+
+The scraped job postings are stored in a dataframe and read in below. A sample resume is scraped and the raw text is stored in variable, "resume". 
 ```{r warning=FALSE, message=FALSE}
 library(readr)
 urlfile<-"https://raw.githubusercontent.com/baruab/Team2_Project_3_607/main/job_posting.csv"
@@ -73,7 +76,8 @@ head(jobs)
 head(resume)
 
 ```
-## A total of 2527 Data Science related Job postings are available for the candidate to consider. However, 300 are evaluated here to save on computation time. The job descriptions are stored as raw text in a new dataframe, "des_all". 
+## Subsetting the data
+A total of 2527 Data Science related Job postings are available for the candidate to consider. However, 300 are evaluated here to save on computation time. The job descriptions are stored as raw text in a new dataframe, "des_all". 
 ```{r warning=FALSE, message=FALSE}
 ##Multiple Job postings at once (Corpus)
 #One row of posting
@@ -83,8 +87,8 @@ des_all<-subset(jobs,select=c(3))
 des_all<-des_all[1:postings,]
 head(des_all)
 ```
-
-## The variable "resume", which contains the resume  text file is stored as the last row of the des_all dataframe (after all the job postings are listed in preceding rows). In preparation for NLP, the text is processed by:
+## Cleaning The Text
+The variable "resume", which contains the resume  text file is stored as the last row of the des_all dataframe (after all the job postings are listed in preceding rows). In preparation for NLP, the text is processed by:
 1) Using regular expressions, unnecesssary symbols and notations are removed. 
 2) Stop words are removed. 
 3) All letters are brought to lower case. 
@@ -108,8 +112,8 @@ des_all$job_description<-sapply(des_all$job_description,lemmatize_strings)
 
 head(des_all)
 ```
-
-## The job descriptions are stored in a Volatile Corpus and the words are tokenized into a matrix. The term frequency per job description is recorded in the matrix and the terms are weighted using term frequency-inverse document frequency (tfidf). The tfidf offsets the number of times a term appears in a  document by the number of documents in the corpous that contain the word. This ensures that terms that simply appear more times than others are not incorrectly considered to be significant since a term can simply appear more frequently if a document has more text.   
+## Term Matrix
+The job descriptions are stored in a Volatile Corpus and the words are tokenized into a matrix. The term frequency per job description is recorded in the matrix and the terms are weighted using term frequency-inverse document frequency (tfidf). The tfidf offsets the number of times a term appears in a  document by the number of documents in the corpous that contain the word. This ensures that terms that simply appear more times than others are not incorrectly considered to be significant since a term can simply appear more frequently if a document has more text.   
 ```{r warning=FALSE, message=FALSE}
 des_all_df<-data.frame(
   doc_id=1:(postings+1),
@@ -125,7 +129,8 @@ inspect(tf)
 inspect(tfidf)
 ```
 
-## Build Recommender: The similarity between job descriptions of each job posting to the candidates resume is assessed using cosine similarity. Mathematically, the cosine similarity  measures the cosine of the angle between two vectors projected. The closer the output is to 1, the more similar the objects are. The lsa package is used to calculate the cosine matrix. Since the resume text is stored in the last row of the matrix, the last row of the cosine similarity output will compare the resume to all the job postings. 
+## TF-IDF Cosine Similarity 
+The similarity between job descriptions of each job posting to the candidates resume is assessed using cosine similarity. Mathematically, the cosine similarity  measures the cosine of the angle between two vectors projected. The closer the output is to 1, the more similar the objects are. The lsa package is used to calculate the cosine matrix. Since the resume text is stored in the last row of the matrix, the last row of the cosine similarity output will compare the resume to all the job postings. 
 ```{r warning=FALSE, message=FALSE}
 #test cosine
 tfidf_a<-as.matrix(tfidf)
@@ -137,8 +142,8 @@ resume_similarity<-cos_df[(postings+1),]
 head(resume_similarity)
 
 ```
-
-## The job posting dataframe is re-arranged based on the cosine similarity output. As the row number increases, the lower the similarity between the resume and job posting. The new dataframe is called "rec_df".  
+## Recommendation Dataframe
+The job posting dataframe is re-arranged based on the cosine similarity output. As the row number increases, the lower the similarity between the resume and job posting. The new dataframe is called "rec_df".  
 ```{r warning=FALSE, message=FALSE}
 list<-names(resume_similarity)<-NULL
 list<-unlist(c(resume_similarity))
@@ -165,7 +170,8 @@ rec_df<-unnest(rec_df)
 head(rec_df)
 ```
 
-## The following section writes a function rec(), which will return a word cloud and venn diagram, and the job postings associated with them, showing what attributes were similar between these top ranked recommendations. The first 3 recommendations are shown. 
+## Visualization
+The following section writes a function rec(), which will return a word cloud and venn diagram, and the job postings associated with them, showing what attributes were similar between these top ranked recommendations. The first 3 recommendations are shown. 
 ```{r warning=FALSE, message=FALSE}
 
 #understanding the terms that are most relevant
@@ -206,6 +212,8 @@ return(rec_df[ranking,2:9])
 
 ```
 
+## Test cases
+rec(1) is the output of  the top recommended job posting. rec(2) and rec(3) are the second and third.
 ```{r warning=FALSE, message=FALSE}
 
 rec(1)
@@ -214,7 +222,7 @@ rec(3)
 ```
 
 
-# Conclusion and Future Improvements: The recommender built in this system is understood to be a very rudimentary approach that demonstrates how cosine similarity can be used to assess the similarity between documents. Since this approach requires the processing of all the job descriptions in its entirety, this can be computationally expensive. A future improvement could be to explore and implement text classification, which is a machine learning technique that assigns a set of categories to text. Much of the computation of classifying text can be performed off line which would drastically shorten solve time. This approach however shows that some of the significant terms captured are data science related and potentially characteristics an employer may be interested in when searching for a candidate.   
+## Conclusion and Future Improvements: The recommender built in this system is understood to be a very rudimentary approach that demonstrates how cosine similarity can be used to assess the similarity between documents. Since this approach requires the processing of all the job descriptions in its entirety, this can be computationally expensive. A future improvement could be to explore and implement text classification, which is a machine learning technique that assigns a set of categories to text. Much of the computation of classifying text can be performed off line which would drastically shorten solve time. This approach however shows that some of the significant terms captured are data science related and potentially characteristics an employer may be interested in when searching for a candidate.   
 
 
 # Create the Shiny UI
